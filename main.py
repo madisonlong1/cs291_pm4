@@ -20,12 +20,12 @@ def main(xr: SyncXR, params: dict):
         HEART_ASSET.raw = f.read()
     
     SEAT_ASSET = GLBAsset()
-    with open("assets/bike_seat_concept.glb", "rb") as f:
+    with open("assets/wrench.glb", "rb") as f:
         SEAT_ASSET.raw = f.read()
         
-    SEAT_ASSET_2 = GLBAsset()
-    with open("assets/bike_seat_2.glb", "rb") as f:
-        SEAT_ASSET_2.raw = f.read()
+    # SEAT_ASSET_2 = GLBAsset()
+    # with open("assets/bike_seat_2.glb", "rb") as f:
+    #     SEAT_ASSET_2.raw = f.read()
         
     SEAT_ASSET_3 = GLBAsset()
     with open("assets/bike_seat_3.glb", "rb") as f:
