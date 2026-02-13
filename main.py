@@ -5,6 +5,7 @@ from xarp.spatial import Transform, Vector3, Pose
 from xarp.gestures import INDEX_TIP, pinch
 from xarp.spatial import Quaternion
 from xarp.data_models import Hands
+from xarp.gestures import PALM
 from PIL import Image
 import math
 
