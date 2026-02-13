@@ -23,7 +23,7 @@ def get_table_pos(xr: SyncXR) -> Vector3:
     for frame in stream:
 
         hands: Hands = frame['hands']
-        if not (hands.right and open_hand(hands.right)):
+        if not (hands.right and open_hand(hands.right) and hands.left and open_hand(hands.left)):
             nframes = 0
             continue
 
@@ -33,6 +33,23 @@ def get_table_pos(xr: SyncXR) -> Vector3:
             break
     stream.close()
     return table_pos
+
+def show_wheel(elements: list[Element], origin: Vector3):
+    RADIUS = 0.2
+    for i in range(len(elements)):
+        elements[i].color = WHITE
+
+        angle = i * (2 * math.pi / len(elements)) + (math.pi / 2)
+        x = math.cos(angle) * RADIUS
+        y = math.sin(angle) * RADIUS
+        elements[i].transform.position.x = origin.x + x
+        elements[i].transform.position.y = origin.y + y
+        elements[i].transform.position.z = origin.z
+
+def hide_wheel(elements: list[Element]):
+    for i in range(len(elements)):
+        elements[i].color = INVISIBLE
+        elements[i].transform.position = Vector3.zero()
 
 def main(xr: SyncXR, params: dict):
      
@@ -53,29 +70,24 @@ def main(xr: SyncXR, params: dict):
     with open("assets/bike_seat_3.glb", "rb") as f:
         SEAT_ASSET_3.raw = f.read()
         
+    ARROW_ASSET = GLBAsset()
+    with open("assets/arrow.glb", "rb") as f:
+        ARROW_ASSET.raw = f.read()
     
+    FRAME_ASSET_1 = ImageAsset.from_obj(obj = Image.open("assets/video_frame1.png"))
+    FRAME_ASSET_2 = ImageAsset.from_obj(obj = Image.open("assets/video_frame2.png"))
+    
+    
+    # CUBE_WHEEL = GLBAsset()
+    # with open("assets/arrow.glb", "rb") as f:
+    #     ARROW_ASSET.raw = f.read()
+
 
     eyepos = xr.eye().position
 
-    elements = []
+    wrench_wheel = []
 
-    NUM_OBJECTS = 5
-
-    RADIUS = 0.2
-
-    for i in range(NUM_OBJECTS):
-        angle = i * (2 * math.pi / NUM_OBJECTS) + (math.pi / 2)
-        x = math.cos(angle) * RADIUS
-        y = math.sin(angle) * RADIUS
-        elements.append(Element(
-            key = f'button_{i}',
-            transform = Transform(
-                position = Vector3.from_xyz(eyepos.x + x, eyepos.y + y, eyepos.z),
-                scale = Vector3.one() * 0.05,
-            ),
-            asset = DefaultAssets.CUBE
-        ))
-
+  
     wrench_element = Element(
         key = f'wrench',
         transform = Transform(
@@ -85,84 +97,121 @@ def main(xr: SyncXR, params: dict):
         asset = WRENCH_ASSET
     )
 
-    elements.append(wrench_element)
-    
     xr.update(wrench_element)
     wrench_element.asset = None
     
-    panel = Element(
+    panel_screen = Element(
         key = 'panel',
         transform = Transform(
-            position = xr.eye().position + Vector3.from_xyz(eyepos.x, eyepos.y - 1.15, eyepos.z + 0.5), # +y is up, -y is down, +z is away from user (forward)
+            position = Vector3.from_xyz(eyepos.x, eyepos.y - 0.2, eyepos.z + 0.5), # +y is up, -y is down, +z is away from user (forward)
             scale = Vector3.one() * 0.6,
         ),
-        # eye = Pose(
-        #     position = xr.eye().position + Vector3.from_xyz(eyepos.x, eyepos.y - 0.9, eyepos.z),
-        # ),
         asset = ImageAsset.from_obj(obj = Image.open('assets/bike-seat-diagram.jpg')),
-        # distance = 0.5
+        color = WHITE
     )
+    xr.update(panel_screen)
+    panel_screen.asset = None
 
-    faux_seat = Element(
-        key = 'seat',
+    idea = Element(
+        key = 'idea',
         transform = Transform(
             position = Vector3.zero(),
             scale = Vector3.one() * 0.15,
         ),
         asset = DefaultAssets.CUBE,
-        color = WHITE
+        color = INVISIBLE
     )
-    elements.append(faux_seat)
-    
-    xr.update(panel)
 
-    # l: bool = False
-    # r: bool = False
 
-    held: bool = False
-    frame_touched: bool = False
-    seat_held: bool = False
+    idea_shown: bool = False
+    idea_held: bool = False
 
     stream = xr.sense(hands=True)
+    
+    #define panels for video frames
+    panel_frame_1 = Element(
+        key = 'frame1',
+        transform = Transform(
+            position = Vector3.from_xyz(eyepos.x + 0.8, eyepos.y-0.1, eyepos.z + 0.3), 
+            scale = Vector3.one() * 0.35,
+        ),
+        asset = FRAME_ASSET_1,
+        color = INVISIBLE
+    )
+    xr.update(panel_frame_1)
+    panel_frame_1.asset = None
+
+    panel_frame_2 = Element(
+        key = 'frame2',
+        transform = Transform(
+            position = Vector3.from_xyz(eyepos.x + 0.8, eyepos.y-0.1, eyepos.z + 0.3), 
+            scale = Vector3.one() * 0.35,
+        ),
+        asset = FRAME_ASSET_2,
+        color = INVISIBLE
+    )
+    xr.update(panel_frame_2)
+    panel_frame_2.asset = None
+
+    dragged_to_table: bool = False
+
     for frame in stream:
+        if (not idea_shown) and ui_button(panel_screen, frame, .3):
+            print('hi')   
+            idea_shown = True
+            idea.transform.position = frame['hands'].right[INDEX_TIP].position
+            idea.color = WHITE
         
-        held = ui_drag(wrench_element, frame, .1, held) 
+        if idea_shown:
+            idea_held = ui_drag(idea, frame, .1, idea_held)
 
-        # if (not frame_touched) and frame['hands'].right and distance(frame['hands'].right[INDEX_TIP].position, panel.eye.position) < .3:       
-        if (not frame_touched) and ui_button(panel, frame, .3):       
-            print("hi")
-            frame_touched = True
-            faux_seat.transform.position = frame['hands'].right[INDEX_TIP].position
-            faux_seat.color = WHITE
-        
-        if frame_touched:
-            seat_held = ui_drag(faux_seat, frame, .1, seat_held)
-        
+        xr.update(idea)
         xr.update(wrench_element)
-
-        # TBD: We will implement the logic to make the menu wheel appear/dissape
-        for button in elements:
-            pass
-            # res: bool = check_button(button, frame)
         
-
-
-            # hands: Hands = frame['hands']
-            # if (not r and hands.right and pinch(hands.right)):
-            #     button.transform.scale += Vector3.one()
-            #     print("increasing")
-            #     r = True
-            # elif hands.right and not pinch(hands.right):
-            #     r = False
+        # if the user drags 'idea' from the panel to the y postion of the table, 
+        # this triggers the arrow and video to appear
+        if idea_shown and idea.transform.position.y <= table_pos.y:
+            idea_shown = False
+            idea.color = INVISIBLE
+            idea.transform.position = Vector3.zero()
             
-            # if (not l and hands.left and pinch(hands.left)):
-            #     button.transform.scale -= Vector3.one()
-            #     print("decreasing")
-            #     l = True
-            # elif hands.left and not pinch(hands.left):
-            #     l = False
+            timer = 0
+            dragged_to_table = True
 
-            # xr.update(button)
+            wrench_pos = wrench_element.transform.position
+            arrow = Element(
+                key = 'arrow',
+                transform = Transform(
+                    position = Vector3.from_xyz(wrench_pos.x + -0.3, wrench_pos.y -0.3, wrench_pos.z + 0.1),
+                    scale = Vector3.one() * 0.05
+                ),
+                asset = ARROW_ASSET
+            )
+            xr.update(arrow)
+
+        if dragged_to_table:
+            if timer / 5 == timer // 5:
+                if (timer // 5) % 2 == 0:
+                    print("1")
+                    panel_frame_1.color = WHITE
+                    panel_frame_2.color = INVISIBLE
+                    xr.update(panel_frame_1)
+                    xr.update(panel_frame_2)
+                else:
+                    print("2")
+                    panel_frame_1.color = INVISIBLE
+                    panel_frame_2.color = WHITE
+
+                    # frame 2 needs to be drawn before frame 1 is removed, else there is a moment when
+                    # nothing is displayed
+                    xr.update(panel_frame_2)
+                    xr.update(panel_frame_1)
+            timer += 1
+            
+            
+            
+        # TBD: We will implement the logic to make the menu wheel appear/dissape
+        show_wheel()
 
     stream.close()
 
