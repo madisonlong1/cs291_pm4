@@ -2,10 +2,9 @@ from xarp.express import SyncXR
 from xarp.server import run, show_qrcode_link
 from xarp.entities import Element, ImageAsset, GLBAsset, DefaultAssets
 from xarp.spatial import Transform, Vector3, Pose
-from xarp.gestures import INDEX_TIP, pinch
+from xarp.gestures import INDEX_TIP, pinch, PALM, open_hand, flat_palm
 from xarp.spatial import Quaternion
 from xarp.data_models import Hands
-from xarp.gestures import PALM
 from PIL import Image
 import math
 
@@ -16,8 +15,30 @@ INVISIBLE = (0,0,0,0)
 def distance(a: Vector3, b: Vector3):
     return math.sqrt((a.x - b.x)**2 + (a.y - b.y)**2 + (a.z - b.z)**2)
 
+#get the vertial position of the table 
+def get_table_pos(xr: SyncXR) -> Vector3:
+    table_pos: Vector3 = Vector3.zero()
+    nframes = 0
+    stream = xr.sense(hands=True)
+    for frame in stream:
+
+        hands: Hands = frame['hands']
+        if not (hands.right and open_hand(hands.right)):
+            nframes = 0
+            continue
+
+        nframes += 1
+        if nframes > 20:
+            table_pos = hands.right[PALM].position
+            break
+    stream.close()
+    return table_pos
+
 def main(xr: SyncXR, params: dict):
-    
+     
+    # Have the user place their hand on the table to record its postion
+    table_pos: Vector3 = get_table_pos(xr)
+
     #import GLB assets
     HEART_ASSET = GLBAsset()
     with open("assets/heart.glb", "rb") as f:
@@ -58,7 +79,7 @@ def main(xr: SyncXR, params: dict):
     wrench_element = Element(
         key = f'wrench',
         transform = Transform(
-            position = Vector3.from_xyz(eyepos.x, eyepos.y - .2, eyepos.z - 0.4),
+            position = Vector3.from_xyz(table_pos.x, table_pos.y, table_pos.z),
             scale = Vector3.one() * 0.01,
         ),
         asset = WRENCH_ASSET
@@ -117,8 +138,11 @@ def main(xr: SyncXR, params: dict):
         if frame_touched:
             seat_held = ui_drag(faux_seat, frame, .1, seat_held)
         
+        xr.update(wrench_element)
+
         # TBD: We will implement the logic to make the menu wheel appear/dissape
         for button in elements:
+            pass
             # res: bool = check_button(button, frame)
         
 
@@ -139,7 +163,6 @@ def main(xr: SyncXR, params: dict):
             #     l = False
 
             # xr.update(button)
-            xr.update(wrench_element)
 
     stream.close()
 
