@@ -26,10 +26,7 @@ def main(xr: SyncXR, params: dict):
     with open("assets/wrench.glb", "rb") as f:
         WRENCH_ASSET.raw = f.read()
         
-    # SEAT_ASSET_2 = GLBAsset()
-    # with open("assets/bike_seat_2.glb", "rb") as f:
-    #     SEAT_ASSET_2.raw = f.read()
-        
+           
     SEAT_ASSET_3 = GLBAsset()
     with open("assets/bike_seat_3.glb", "rb") as f:
         SEAT_ASSET_3.raw = f.read()
@@ -61,9 +58,9 @@ def main(xr: SyncXR, params: dict):
         key = f'wrench',
         transform = Transform(
             position = Vector3.from_xyz(eyepos.x, eyepos.y - .2, eyepos.z - 0.4),
-            scale = Vector3.one() * 0.1,
+            scale = Vector3.one() * 0.01,
         ),
-        asset = DefaultAssets.CUBE
+        asset = WRENCH_ASSET
     )
 
     elements.append(wrench_element)
@@ -74,7 +71,7 @@ def main(xr: SyncXR, params: dict):
     panel = Element(
         key = 'panel',
         transform = Transform(
-            position = xr.eye().position + Vector3.from_xyz(eyepos.x, eyepos.y - 0.9, eyepos.z),
+            position = xr.eye().position + Vector3.from_xyz(eyepos.x, eyepos.y - 1.15, eyepos.z + 0.5), # +y is up, -y is down, +z is away from user (forward)
             scale = Vector3.one() * 0.6,
         ),
         # eye = Pose(
@@ -140,7 +137,8 @@ def main(xr: SyncXR, params: dict):
             # elif hands.left and not pinch(hands.left):
             #     l = False
 
-            xr.update(button)
+            # xr.update(button)
+            xr.update(wrench_element)
 
     stream.close()
 
