@@ -183,9 +183,14 @@ def main(xr: SyncXR, params: dict):
     
     can_cancel: bool = False
 
+    new_pinch: bool = False
 
     xr.update(wrench_element)
     for frame in stream:
+        if not new_pinch and frame['hands'].right and pinch(frame['hands'].right):
+            new_pinch = True
+        elif new_pinch:
+            new_pinch = False
 
         # Handle spawning of idea.
         if not idea_shown and ui_button(panel_screen, frame, .3):
@@ -196,8 +201,6 @@ def main(xr: SyncXR, params: dict):
         # Handle dragging of "idea."
         if idea_shown:
             idea_held = ui_drag(idea, frame, .1, idea_held)
-            # if the user drags 'idea' from the panel to the y postion of the table, 
-            # this triggers the arrow and video to appear
             if idea.transform.position.y <= table_pos.y:
                 idea_shown = False
                 idea.color = INVISIBLE
