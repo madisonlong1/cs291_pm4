@@ -15,6 +15,12 @@ INVISIBLE = (0,0,0,0)
 def distance(a: Vector3, b: Vector3):
     return math.sqrt((a.x - b.x)**2 + (a.y - b.y)**2 + (a.z - b.z)**2)
 
+def sq_horz_mag(v: Vector3):
+    return v.x**2 + v.z**2
+
+def sq_mag(v: Vector3):
+    return v.x**2 + v.y**2 + v.z**2
+
 #get the vertial position of the table 
 def get_table_pos(xr: SyncXR) -> Vector3:
     table_pos: Vector3 = Vector3.zero()
@@ -23,7 +29,7 @@ def get_table_pos(xr: SyncXR) -> Vector3:
     for frame in stream:
 
         hands: Hands = frame['hands']
-        if not (hands.right and open_hand(hands.right) and hands.left and open_hand(hands.left)):
+        if not (hands.right and hands.left and open_hand(hands.right) and open_hand(hands.left)):
             nframes = 0
             continue
 
@@ -35,7 +41,7 @@ def get_table_pos(xr: SyncXR) -> Vector3:
     return table_pos
 
 def show_wheel(elements: list[Element], origin: Vector3):
-    RADIUS = 0.2
+    RADIUS = 0.1
     for i in range(len(elements)):
         elements[i].color = WHITE
 
@@ -85,8 +91,14 @@ def main(xr: SyncXR, params: dict):
 
     eyepos = xr.eye().position
 
-    wrench_wheel = []
+    wheel = [Element(
+        key = f'wh_{i}',
+        transform = Transform(position = Vector3.zero(), scale = Vector3.one() * 0.05),
+        asset = DefaultAssets.CUBE
+    ) for i in range(3)]
 
+    for e in wheel:
+        xr.update(e)
   
     wrench_element = Element(
         key = f'wrench',
@@ -116,7 +128,7 @@ def main(xr: SyncXR, params: dict):
         key = 'idea',
         transform = Transform(
             position = Vector3.zero(),
-            scale = Vector3.one() * 0.15,
+            scale = Vector3.one() * 0.10,
         ),
         asset = DefaultAssets.CUBE,
         color = INVISIBLE
@@ -153,52 +165,68 @@ def main(xr: SyncXR, params: dict):
     xr.update(panel_frame_2)
     panel_frame_2.asset = None
 
-    dragged_to_table: bool = False
+    close_element = Element(
+        key = 'close',
+        transform = Transform(
+            position = Vector3.zero(),
+            scale = Vector3.one() * 0.05
+        ),
+        asset = DefaultAssets.SPHERE,
+        color = INVISIBLE
+    )
 
+    idea_dragged_to_table: bool = False
+
+    wheel_shown: bool = False
+    wheel_held: list[bool] = [False, False, False]
+    wheel_coords = [Vector3.from_xyz(0,0,0), Vector3.from_xyz(0,0,0), Vector3.from_xyz(0,0,0)]
+    
+    can_cancel: bool = False
+
+
+    xr.update(wrench_element)
     for frame in stream:
-        if (not idea_shown) and ui_button(panel_screen, frame, .3):
-            print('hi')   
+
+        # Handle spawning of idea.
+        if not idea_shown and ui_button(panel_screen, frame, .3):
             idea_shown = True
             idea.transform.position = frame['hands'].right[INDEX_TIP].position
             idea.color = WHITE
         
+        # Handle dragging of "idea."
         if idea_shown:
             idea_held = ui_drag(idea, frame, .1, idea_held)
+            # if the user drags 'idea' from the panel to the y postion of the table, 
+            # this triggers the arrow and video to appear
+            if idea.transform.position.y <= table_pos.y:
+                idea_shown = False
+                idea.color = INVISIBLE
+                idea.transform.position = Vector3.zero()
+                
+                timer = 0
+                idea_dragged_to_table = True
 
-        xr.update(idea)
-        xr.update(wrench_element)
-        
-        # if the user drags 'idea' from the panel to the y postion of the table, 
-        # this triggers the arrow and video to appear
-        if idea_shown and idea.transform.position.y <= table_pos.y:
-            idea_shown = False
-            idea.color = INVISIBLE
-            idea.transform.position = Vector3.zero()
-            
-            timer = 0
-            dragged_to_table = True
+                wrench_pos = wrench_element.transform.position
+                arrow = Element(
+                    key = 'arrow',
+                    transform = Transform(
+                        position = Vector3.from_xyz(wrench_pos.x + -0.3, wrench_pos.y -0.3, wrench_pos.z + 0.1),
+                        scale = Vector3.one() * 0.05
+                    ),
+                    asset = ARROW_ASSET
+                )
+                xr.update(arrow)
+            xr.update(idea)
 
-            wrench_pos = wrench_element.transform.position
-            arrow = Element(
-                key = 'arrow',
-                transform = Transform(
-                    position = Vector3.from_xyz(wrench_pos.x + -0.3, wrench_pos.y -0.3, wrench_pos.z + 0.1),
-                    scale = Vector3.one() * 0.05
-                ),
-                asset = ARROW_ASSET
-            )
-            xr.update(arrow)
-
-        if dragged_to_table:
+        # Draw "video."
+        if idea_dragged_to_table:
             if timer / 5 == timer // 5:
                 if (timer // 5) % 2 == 0:
-                    print("1")
                     panel_frame_1.color = WHITE
                     panel_frame_2.color = INVISIBLE
                     xr.update(panel_frame_1)
                     xr.update(panel_frame_2)
                 else:
-                    print("2")
                     panel_frame_1.color = INVISIBLE
                     panel_frame_2.color = WHITE
 
@@ -208,10 +236,64 @@ def main(xr: SyncXR, params: dict):
                     xr.update(panel_frame_1)
             timer += 1
             
+        if not wheel_shown and ui_button(wrench_element, frame, 0.1):
+            show_wheel(wheel, 
+                       wrench_element.transform.position 
+                            + Vector3.from_xyz(0, 0.3, 0))
             
+            for i, e in enumerate(wheel):
+                wheel_coords[i] = e.transform.position
+                xr.update(e)
+
+            wheel_shown = True
             
-        # TBD: We will implement the logic to make the menu wheel appear/dissape
-        show_wheel()
+        if wheel_shown and frame['hands'].right:
+            hands: Hands = frame['hands']
+            if True in wheel_held:
+                i = wheel_held.index(True)
+                wheel_held[i] = ui_drag(e, frame, 0.1, wheel_held[i])
+                if not wheel_held[i]:
+                    if distance(wheel[i].transform.position, panel_screen.transform.position) < .1:
+                        xr.write("stuff")
+                    wheel[i].transform.position = wheel_coords[i]
+                xr.update(e)
+            else:
+                for i, e in enumerate(wheel):
+                    wheel_held[i] = ui_drag(e, frame, 0.1, wheel_held[i])
+                    if wheel_held[i]:
+                        xr.update(e)
+                        break
+                
+                
+            v: Vector3 = hands.right[PALM].position - wrench_element.transform.position
+            if not (sq_horz_mag(v) < .01 and open_hand(hands.right)):
+                can_cancel = False
+                close_element.transform.position = Vector3.zero()
+                close_element.color = INVISIBLE
+                xr.update(close_element)
+            else:
+                # Enable closing when hand is high enough.
+                if v.y > 0.3:
+                    close_element.color = WHITE                
+                    can_cancel = True
+
+                # If closing is enabled, close when hand reaches low enough y-threshold.
+                if can_cancel:
+                    close_element.transform.position = hands.right[PALM].position + Vector3.from_xyz(0, -0.02, 0)
+
+                    if v.y <= .02:
+                        can_cancel = False
+                        close_element.transform.position = Vector3.zero()
+                        close_element.color = INVISIBLE
+                        
+                        hide_wheel(wheel)
+                    
+                        for e in wheel:
+                            xr.update(e)
+
+                        wheel_shown = False
+                    xr.update(close_element)
+            
 
     stream.close()
 
@@ -258,7 +340,7 @@ def ui_held(ui: Element, frame: dict, radius: float, was_held: bool):
 
 def ui_drag(ui: Element, frame: dict, radius: float, was_held: bool):
     held: bool = ui_held(ui, frame, radius, was_held)
-    if held:
+    if held and frame['hands'].right:
         ui.transform.position = frame['hands'].right[INDEX_TIP].position
     return held
 
