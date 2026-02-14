@@ -61,7 +61,7 @@ def main(xr: SyncXR, params: dict):
      
     # Have the user place their hand on the table to record its postion
     table_pos: Vector3 = get_table_pos(xr)
-
+    
     #import GLB assets
     HEART_ASSET = GLBAsset()
     with open("assets/heart.glb", "rb") as f:
@@ -82,6 +82,10 @@ def main(xr: SyncXR, params: dict):
     
     FRAME_ASSET_1 = ImageAsset.from_obj(obj = Image.open("assets/video_frame1.png"))
     FRAME_ASSET_2 = ImageAsset.from_obj(obj = Image.open("assets/video_frame2.png"))
+    
+    WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/wrench_guide.jpg"))
+    ALLEN_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/allen_wrench_guide.png"))
+    SOCKET_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/socket_wrench_guide.jpg"))
     
     
     # CUBE_WHEEL = GLBAsset()
@@ -123,6 +127,46 @@ def main(xr: SyncXR, params: dict):
     )
     xr.update(panel_screen)
     panel_screen.asset = None
+    
+    active_screen: Element = panel_screen
+    active_screen_loc: Vector3 = panel_screen.transform.position
+
+    wrench_screen = Element( # wrench screens appear in the event a menu item was dragged to the panel
+        key = 'wrench_screen',
+        transform = Transform(
+            position = Vector3.zero(), 
+            scale = Vector3.one() * 0.6,
+        ),
+        asset = WRENCH_GUIDE_ASSET,
+        color = INVISIBLE
+    )
+    xr.update(wrench_screen)
+    wrench_screen.asset = None
+    
+    socket_wrench_screen = Element(
+        key = 'socket_wrench_screen',
+        transform = Transform(
+            position = Vector3.zero(), 
+            scale = Vector3.one() * 0.6,
+        ),
+        asset = ALLEN_WRENCH_GUIDE_ASSET,
+        color = INVISIBLE
+    )
+    xr.update(socket_wrench_screen)
+    socket_wrench_screen.asset = None
+    
+    allen_wrench_screen = Element(
+        key = 'allen_wrench_screen',
+        transform = Transform(
+            position = Vector3.zero(), 
+            scale = Vector3.one() * 0.6,
+        ),
+        asset = SOCKET_WRENCH_GUIDE_ASSET,
+        color = INVISIBLE
+    )
+    xr.update(allen_wrench_screen)
+    allen_wrench_screen.asset = None
+
 
     idea = Element(
         key = 'idea',
@@ -130,7 +174,7 @@ def main(xr: SyncXR, params: dict):
             position = Vector3.zero(),
             scale = Vector3.one() * 0.10,
         ),
-        asset = DefaultAssets.CUBE,
+        asset = DefaultAssets.SPHERE,
         color = INVISIBLE
     )
 
@@ -183,17 +227,21 @@ def main(xr: SyncXR, params: dict):
     
     can_cancel: bool = False
 
+    pinched_last_frame: bool = False
     new_pinch: bool = False
 
     xr.update(wrench_element)
     for frame in stream:
-        if not new_pinch and frame['hands'].right and pinch(frame['hands'].right):
+        if not pinched_last_frame and frame['hands'].right and pinch(frame['hands'].right):
             new_pinch = True
-        elif new_pinch:
+            pinched_last_frame = True
+        else:
             new_pinch = False
+            if frame['hands'].right and not pinch(frame['hands'].right):
+                pinched_last_frame = False
 
         # Handle spawning of idea.
-        if not idea_shown and ui_button(panel_screen, frame, .3):
+        if not idea_shown and new_pinch and ui_button(panel_screen, frame, .2):
             idea_shown = True
             idea.transform.position = frame['hands'].right[INDEX_TIP].position
             idea.color = WHITE
@@ -239,7 +287,7 @@ def main(xr: SyncXR, params: dict):
                     xr.update(panel_frame_1)
             timer += 1
             
-        if not wheel_shown and ui_button(wrench_element, frame, 0.1):
+        if not wheel_shown and new_pinch and ui_button(wrench_element, frame, 0.1):
             show_wheel(wheel, 
                        wrench_element.transform.position 
                             + Vector3.from_xyz(0, 0.3, 0))
@@ -256,8 +304,20 @@ def main(xr: SyncXR, params: dict):
                 i = wheel_held.index(True)
                 wheel_held[i] = ui_drag(e, frame, 0.1, wheel_held[i])
                 if not wheel_held[i]:
-                    if distance(wheel[i].transform.position, panel_screen.transform.position) < .1:
-                        xr.write("stuff")
+                    if distance(wheel[i].transform.position, active_screen.transform.position) < .2:
+                        screens = [wrench_screen, socket_wrench_screen, allen_wrench_screen]
+                        active_screen_loc = active_screen.transform.position
+                        # next render the new panel and remove the old
+                        active_screen.color = INVISIBLE
+                        active_screen.transform.position = Vector3.zero()
+                        xr.update(active_screen)
+
+                        screens[i].color = WHITE
+                        screens[i].transform.position = active_screen_loc
+                        xr.update(screens[i])
+
+                        active_screen = screens[i]
+                        
                     wheel[i].transform.position = wheel_coords[i]
                 xr.update(e)
             else:
@@ -267,7 +327,7 @@ def main(xr: SyncXR, params: dict):
                         xr.update(e)
                         break
                 
-                
+            # Handle wheel close.
             v: Vector3 = hands.right[PALM].position - wrench_element.transform.position
             if not (sq_horz_mag(v) < .01 and open_hand(hands.right)):
                 can_cancel = False
@@ -295,6 +355,18 @@ def main(xr: SyncXR, params: dict):
                             xr.update(e)
 
                         wheel_shown = False
+
+                        # Revert active screen to default.
+                        active_screen.color = INVISIBLE
+                        active_screen.transform.position = Vector3.zero()
+                        xr.update(active_screen)
+
+                        panel_screen.color = WHITE
+                        panel_screen.transform.position = active_screen_loc
+                        xr.update(panel_screen)
+
+                        active_screen = panel_screen
+
                     xr.update(close_element)
             
 
