@@ -119,7 +119,7 @@ def main(xr: SyncXR, params: dict):
     panel_screen = Element(
         key = 'panel',
         transform = Transform(
-            position = Vector3.from_xyz(eyepos.x, eyepos.y - 0.2, eyepos.z + 0.5), # +y is up, -y is down, +z is away from user (forward)
+            position = Vector3.from_xyz(eyepos.x-.3, eyepos.y - 0.2, eyepos.z + 0.5), # +y is up, -y is down, +z is away from user (forward)
             scale = Vector3.one() * 0.6,
         ),
         asset = ImageAsset.from_obj(obj = Image.open('assets/bike-seat-diagram.jpg')),
@@ -188,7 +188,7 @@ def main(xr: SyncXR, params: dict):
     panel_frame_1 = Element(
         key = 'frame1',
         transform = Transform(
-            position = Vector3.from_xyz(eyepos.x + 0.8, eyepos.y-0.1, eyepos.z + 0.3), 
+            position = Vector3.from_xyz(eyepos.x + 0.1, eyepos.y-0.1, eyepos.z + 0.5), 
             scale = Vector3.one() * 0.35,
         ),
         asset = FRAME_ASSET_1,
@@ -200,7 +200,7 @@ def main(xr: SyncXR, params: dict):
     panel_frame_2 = Element(
         key = 'frame2',
         transform = Transform(
-            position = Vector3.from_xyz(eyepos.x + 0.8, eyepos.y-0.1, eyepos.z + 0.3), 
+            position = Vector3.from_xyz(eyepos.x + 0.1, eyepos.y-0.1, eyepos.z + 0.5), 
             scale = Vector3.one() * 0.35,
         ),
         asset = FRAME_ASSET_2,
