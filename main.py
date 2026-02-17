@@ -10,6 +10,7 @@ import math
 
 WHITE = (1,1,1,1)
 RED = (1,0,0,1)
+TRANSPARENT = (1,1,1,.5)
 INVISIBLE = (0,0,0,0)
 
 def distance(a: Vector3, b: Vector3):
@@ -79,9 +80,9 @@ def main(xr: SyncXR, params: dict):
     with open("assets/ratchet_wrench.glb", "rb") as f:
         RATCHET_WRENCH_ASSET.raw = f.read()
            
-    SEAT_ASSET_3 = GLBAsset()
-    with open("assets/bike_seat_3.glb", "rb") as f:
-        SEAT_ASSET_3.raw = f.read()
+    BIKE_SEAT = GLBAsset()
+    with open("assets/bike_seat.glb", "rb") as f:
+        BIKE_SEAT.raw = f.read()
         
     ARROW_ASSET = GLBAsset()
     with open("assets/arrow.glb", "rb") as f:
@@ -92,7 +93,7 @@ def main(xr: SyncXR, params: dict):
     
     WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/wrench_guide.jpg"))
     ALLEN_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/allen_wrench_guide.png"))
-    SOCKET_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/socket_wrench_guide.jpg"))
+    RATCHET_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/ratchet_wrench_guide.jpg"))
     
     
     # CUBE_WHEEL = GLBAsset()
@@ -131,20 +132,20 @@ def main(xr: SyncXR, params: dict):
     wrench_element = Element(
         key = f'wrench',
         transform = Transform(
-            position = Vector3.from_xyz(table_pos.x, table_pos.y, table_pos.z),
-            scale = Vector3.one() * 0.01,
+            position = Vector3.from_xyz(table_pos.x, table_pos.y + .05, table_pos.z),
+            scale = Vector3.one() * 0.0005,
         ),
-        asset = WRENCH_ASSET
+        color = TRANSPARENT,
+        asset = DefaultAssets.SPHERE
     )
-
     xr.update(wrench_element)
-    wrench_element.asset = None
     
     panel_screen = Element(
         key = 'panel',
         transform = Transform(
-            position = Vector3.from_xyz(eyepos.x-.3, eyepos.y - 0.2, eyepos.z + 0.5), # +y is up, -y is down, +z is away from user (forward)
+            position = Vector3.from_xyz(table_pos.x-.6, table_pos.y + 0.2, table_pos.z + 0.35), # +y is up, -y is down, +z is away from user (forward)
             scale = Vector3.one() * 0.6,
+            rotation = Quaternion.from_euler_angles(0, -27.5, 0)
         ),
         asset = ImageAsset.from_obj(obj = Image.open('assets/bike-seat-diagram.jpg')),
         color = WHITE
@@ -159,48 +160,58 @@ def main(xr: SyncXR, params: dict):
         key = 'wrench_screen',
         transform = Transform(
             position = Vector3.zero(), 
-            scale = Vector3.one() * 0.75,
+            scale = Vector3.one() * 2,
         ),
         asset = WRENCH_GUIDE_ASSET,
         color = INVISIBLE
     )
     xr.update(wrench_screen)
     wrench_screen.asset = None
-    
-    socket_wrench_screen = Element(
-        key = 'socket_wrench_screen',
+
+    ratchet_wrench_screen = Element(
+        key = 'ratchet_wrench_screen',
         transform = Transform(
             position = Vector3.zero(), 
-            scale = Vector3.one() * 0.1,
+            scale = Vector3.one() * 2.5,
         ),
-        asset = ALLEN_WRENCH_GUIDE_ASSET,
+        asset = RATCHET_WRENCH_GUIDE_ASSET,
         color = INVISIBLE
     )
-    xr.update(socket_wrench_screen)
-    socket_wrench_screen.asset = None
+    xr.update(ratchet_wrench_screen)
+    ratchet_wrench_screen.asset = None
+
+    ratchet_wrench_screen.transform.scale = Vector3.one() * 2.5
+    xr.update(ratchet_wrench_screen)
     
     allen_wrench_screen = Element(
         key = 'allen_wrench_screen',
         transform = Transform(
             position = Vector3.zero(), 
-            scale = Vector3.one() * 0.3,
+            scale = Vector3.one() * 0.4,
         ),
-        asset = SOCKET_WRENCH_GUIDE_ASSET,
+        asset = ALLEN_WRENCH_GUIDE_ASSET,
         color = INVISIBLE
     )
     xr.update(allen_wrench_screen)
     allen_wrench_screen.asset = None
 
+    allen_wrench_screen.transform.scale = Vector3.one() * .4
+    xr.update(allen_wrench_screen)
 
     idea = Element(
         key = 'idea',
         transform = Transform(
             position = Vector3.zero(),
-            scale = Vector3.one() * 0.10,
+            scale = Vector3.one(),
+            rotation = Quaternion.from_euler_angles(0, 60, 0)
         ),
-        asset = DefaultAssets.SPHERE,
-        color = INVISIBLE
+        asset = BIKE_SEAT,
     )
+    xr.update(idea)
+    idea.asset = None
+
+    idea.transform.scale = Vector3.one() * 0.15
+    xr.update(idea)
 
 
     idea_shown: bool = False
@@ -212,8 +223,8 @@ def main(xr: SyncXR, params: dict):
     panel_frame_1 = Element(
         key = 'frame1',
         transform = Transform(
-            position = Vector3.from_xyz(eyepos.x + 0.1, eyepos.y-0.1, eyepos.z + 0.5), 
-            scale = Vector3.one() * 1.15,
+            position = Vector3.from_xyz(table_pos.x - 0.15, table_pos.y+0.15, table_pos.z + 0.5), 
+            scale = Vector3.one() * 0.35,
         ),
         asset = FRAME_ASSET_1,
         color = INVISIBLE
@@ -224,7 +235,7 @@ def main(xr: SyncXR, params: dict):
     panel_frame_2 = Element(
         key = 'frame2',
         transform = Transform(
-            position = Vector3.from_xyz(eyepos.x + 0.1, eyepos.y-0.1, eyepos.z + 0.5), 
+            position = Vector3.from_xyz(table_pos.x - 0.15, table_pos.y+0.15, table_pos.z + 0.5), 
             scale = Vector3.one() * 0.35,
         ),
         asset = FRAME_ASSET_2,
@@ -296,8 +307,8 @@ def main(xr: SyncXR, params: dict):
 
         # Draw "video."
         if idea_dragged_to_table:
-            if timer / 5 == timer // 5:
-                if (timer // 5) % 2 == 0:
+            if timer / 10 == timer // 10:
+                if (timer // 10) % 2 == 0:
                     panel_frame_1.color = WHITE
                     panel_frame_2.color = INVISIBLE
                     xr.update(panel_frame_1)
@@ -315,7 +326,7 @@ def main(xr: SyncXR, params: dict):
         if not wheel_shown and new_pinch and ui_button(wrench_element, frame, 0.1):
             show_wheel(wheel, 
                        wrench_element.transform.position 
-                            + Vector3.from_xyz(0, 0.3, 0))
+                            + Vector3.from_xyz(0, 0.2, 0))
             
             for i, e in enumerate(wheel):
                 wheel_coords[i] = e.transform.position
@@ -336,7 +347,7 @@ def main(xr: SyncXR, params: dict):
                 wheel_held[i] = ui_drag(e, frame, 0.1, wheel_held[i])
                 if wheel_held[i] == 0:
                     if distance(wheel[i].transform.position, active_screen.transform.position) < .2:
-                        screens = [wrench_screen, socket_wrench_screen, allen_wrench_screen]
+                        screens = [wrench_screen, allen_wrench_screen, ratchet_wrench_screen]
                         active_screen_loc = active_screen.transform.position
                         # next render the new panel and remove the old
                         active_screen.color = INVISIBLE
@@ -345,6 +356,7 @@ def main(xr: SyncXR, params: dict):
 
                         screens[i].color = WHITE
                         screens[i].transform.position = active_screen_loc
+                        screens[i].transform.rotation = active_screen.transform.rotation
                         xr.update(screens[i])
 
                         active_screen = screens[i]
@@ -368,12 +380,13 @@ def main(xr: SyncXR, params: dict):
             else:
                 # Enable closing when hand is high enough.
                 if v.y > 0.3:
-                    close_element.color = WHITE                
+                    close_element.color = RED                
                     can_cancel = True
 
                 # If closing is enabled, close when hand reaches low enough y-threshold.
                 if can_cancel:
                     close_element.transform.position = hands.right[PALM].position + Vector3.from_xyz(0, -0.02, 0)
+                    close_element.color = (1, (.3 - v.y) / .3, (.3 - v.y) / .3, 1)
 
                     if v.y <= .02:
                         can_cancel = False
@@ -413,15 +426,15 @@ def main(xr: SyncXR, params: dict):
 def ui_button(button: Element, frame: dict, radius: float,) -> bool:
     hands: Hands = frame['hands']
     if (not hands.right):
-        button.color = WHITE
+        # button.color = WHITE
         return False
 
     handpos = hands.right[INDEX_TIP].position
     if distance(handpos, button.transform.position) < radius:
-        button.color = RED
+        # button.color = RED
         return pinch(hands.right)
     
-    button.color = WHITE
+    # button.color = WHITE
     return False
 
 # Return number greater than 0 if element is held down.
@@ -431,13 +444,13 @@ def ui_held(ui: Element, frame: dict, radius: float, extra_frames: int):
     
     hands: Hands = frame['hands']
     if (not hands.right):
-        if (extra_frames == 0):
-            ui.color = WHITE
+        # if (extra_frames == 0):
+            # ui.color = WHITE
         return max(0, extra_frames - 1)
 
     handpos = hands.right[INDEX_TIP].position
     if distance(handpos, ui.transform.position) < radius:
-        ui.color = RED
+        # ui.color = RED
         if pinch(hands.right):
             return FRAMES
         
@@ -447,7 +460,7 @@ def ui_held(ui: Element, frame: dict, radius: float, extra_frames: int):
         else:
             return extra_frames - 1
 
-    ui.color = WHITE
+    # ui.color = WHITE
     return 0
 
 def ui_drag(ui: Element, frame: dict, radius: float, extra_frames: int):
