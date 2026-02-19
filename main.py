@@ -1,12 +1,15 @@
 from xarp.express import SyncXR
 from xarp.server import run, show_qrcode_link
-from xarp.entities import Element, ImageAsset, GLBAsset, DefaultAssets
+from xarp.entities import Element, ImageAsset, GLBAsset, DefaultAssets, TextAsset
 from xarp.spatial import Transform, Vector3, Pose
-from xarp.gestures import INDEX_TIP, pinch, PALM, open_hand, flat_palm
+from xarp.gestures import INDEX_TIP, THUMB_METACARPAL, MIDDLE_METACARPAL, pinch, PALM, open_hand, flat_palm
 from xarp.spatial import Quaternion
 from xarp.data_models import Hands
 from PIL import Image
 import math
+import numpy as np
+
+from typing import Tuple
 
 WHITE = (1,1,1,1)
 RED = (1,0,0,1)
@@ -22,22 +25,117 @@ def sq_horz_mag(v: Vector3):
 def sq_mag(v: Vector3):
     return v.x**2 + v.y**2 + v.z**2
 
+def hand_normal_similarity(hands: Hands) -> float:
+    n_1 = hand_normal(hands.left)
+    n_2 = hand_normal(hands.right)
+
+    return np.dot(n_1.to_numpy(), -n_2.to_numpy())
+
+def hand_up_dist(hand: Tuple[Pose, ...]) -> float:
+    n = hand_normal(hand)
+
+    a: Vector3 = Vector3.up()
+    return np.dot(n.to_numpy(), a.to_numpy())
+
+def hand_normal(hand: Tuple[Pose, ...]) -> Vector3:
+    palm = hand[PALM].position
+    index = hand[MIDDLE_METACARPAL].position
+    thumb = hand[THUMB_METACARPAL].position
+
+    a = index - palm
+    b = thumb - palm
+
+    crossed = np.cross(a.to_numpy(), b.to_numpy())
+    norm = np.linalg.norm(crossed)
+    normalized = crossed if norm == 0 else crossed / norm
+    return Vector3(normalized)
+
 #get the vertial position of the table 
 def get_table_pos(xr: SyncXR) -> Vector3:
+    MESSAGE = """
+            Face forward and place your palms face down on the table in front of you.
+            Hold still until the message disappears.
+            """
+
+    tutorial = Element(
+        key = "tutorial",
+    )
+
+    left_indicator = Element(
+        key = "left_ind",
+        transform = Transform(
+            scale = Vector3.one() * 0.05
+        ),
+        asset = DefaultAssets.SPHERE,
+        color = INVISIBLE
+    )
+
+    right_indicator = Element(
+        key = "right_ind",
+        transform = Transform(
+            scale = Vector3.one() * 0.05
+        ),
+        asset = DefaultAssets.SPHERE,
+        color = INVISIBLE
+    )
+
     table_pos: Vector3 = Vector3.zero()
     nframes = 0
-    stream = xr.sense(hands=True)
+    stream = xr.sense(eye=True, hands=True)
     for frame in stream:
 
         hands: Hands = frame['hands']
-        if not (hands.right and hands.left and open_hand(hands.right) and open_hand(hands.left)):
+        if not (hands.right and hands.left):
+            nframes = 0
+            continue
+        
+        # tutorial.transform.position = frame['eye'].position + Vector3.from_xyz(0, 0, +0.5)
+        tutorial.transform.position = (hands.left[PALM].position + hands.right[PALM].position) * .5
+        tutorial.asset = TextAsset.from_obj(f"{nframes} \n {MESSAGE}")
+        xr.update(tutorial)
+
+        left_down: bool = open_hand(hands.left) and hand_up_dist(hands.left) < -.8
+        right_down: bool = open_hand(hands.right) and hand_up_dist(hands.right) > .8
+
+        if left_down and left_indicator.color == INVISIBLE:
+            left_indicator.color = WHITE
+            xr.update(left_indicator)
+        
+        if not left_down and left_indicator.color == WHITE:
+            left_indicator.color = INVISIBLE
+            xr.update(left_indicator)
+
+        if right_down and right_indicator.color == INVISIBLE:
+            right_indicator.color = WHITE
+            xr.update(right_indicator)
+
+        if not right_down and right_indicator.color == WHITE:
+            right_indicator.color = INVISIBLE
+            xr.update(right_indicator)
+
+        if not left_down or not right_down:
             nframes = 0
             continue
 
+        y_dist = abs(hands.left[PALM].position.y - hands.right[PALM].position.y)
+        if y_dist > .03:
+            nframes = 0
+            continue
+
+        # if hand_normal_similarity(hands) < .8:
+        #     nframes = 0
+        #     continue
+
+        # print(f"left: {hand_normal(hands.left)}, right: {hand_normal(hands.right)}")
+        # print(f"{hand_normal_dist(hands)}")
+
+        print(f"left: {hand_up_dist(hands.left)}, right: {hand_up_dist(hands.right)}")
         nframes += 1
-        if nframes > 20:
-            table_pos = hands.right[PALM].position
-            break
+        # if nframes > 20:
+        #     table_pos = hands.right[PALM].position
+        #     break
+
+    xr.destroy_element(tutorial)
     stream.close()
     return table_pos
 
@@ -61,8 +159,8 @@ def hide_wheel(elements: list[Element]):
 def main(xr: SyncXR, params: dict):
      
     # Have the user place their hand on the table to record its postion
-    table_pos: Vector3 = get_table_pos(xr)
-    
+    initial_rh_pos: Vector3 = get_table_pos(xr)
+
     #import GLB assets
     HEART_ASSET = GLBAsset()
     with open("assets/heart.glb", "rb") as f:
@@ -100,9 +198,6 @@ def main(xr: SyncXR, params: dict):
     # with open("assets/arrow.glb", "rb") as f:
     #     ARROW_ASSET.raw = f.read()
 
-
-    eyepos = xr.eye().position
-
     wheel = [Element(
         key = f'wh_0',
         transform = Transform(
@@ -132,7 +227,7 @@ def main(xr: SyncXR, params: dict):
     wrench_element = Element(
         key = f'wrench',
         transform = Transform(
-            position = Vector3.from_xyz(table_pos.x, table_pos.y + .05, table_pos.z),
+            position = Vector3.from_xyz(initial_rh_pos.x, initial_rh_pos.y + .05, initial_rh_pos.z),
             scale = Vector3.one() * 0.0005,
         ),
         color = TRANSPARENT,
@@ -143,7 +238,7 @@ def main(xr: SyncXR, params: dict):
     panel_screen = Element(
         key = 'panel',
         transform = Transform(
-            position = Vector3.from_xyz(table_pos.x-.6, table_pos.y + 0.2, table_pos.z + 0.35), # +y is up, -y is down, +z is away from user (forward)
+            position = Vector3.from_xyz(initial_rh_pos.x-.6, initial_rh_pos.y + 0.2, initial_rh_pos.z + 0.35), # +y is up, -y is down, +z is away from user (forward)
             scale = Vector3.one() * 0.6,
             rotation = Quaternion.from_euler_angles(0, -27.5, 0)
         ),
@@ -206,6 +301,7 @@ def main(xr: SyncXR, params: dict):
             rotation = Quaternion.from_euler_angles(0, 60, 0)
         ),
         asset = BIKE_SEAT,
+        color = INVISIBLE
     )
     xr.update(idea)
     idea.asset = None
@@ -223,7 +319,7 @@ def main(xr: SyncXR, params: dict):
     panel_frame_1 = Element(
         key = 'frame1',
         transform = Transform(
-            position = Vector3.from_xyz(table_pos.x - 0.15, table_pos.y+0.15, table_pos.z + 0.5), 
+            position = Vector3.from_xyz(initial_rh_pos.x - 0.15, initial_rh_pos.y+0.15, initial_rh_pos.z + 0.5), 
             scale = Vector3.one() * 0.35,
         ),
         asset = FRAME_ASSET_1,
@@ -235,7 +331,7 @@ def main(xr: SyncXR, params: dict):
     panel_frame_2 = Element(
         key = 'frame2',
         transform = Transform(
-            position = Vector3.from_xyz(table_pos.x - 0.15, table_pos.y+0.15, table_pos.z + 0.5), 
+            position = Vector3.from_xyz(initial_rh_pos.x - 0.15, initial_rh_pos.y+0.15, initial_rh_pos.z + 0.5), 
             scale = Vector3.one() * 0.35,
         ),
         asset = FRAME_ASSET_2,
@@ -285,7 +381,7 @@ def main(xr: SyncXR, params: dict):
         # Handle dragging of "idea."
         if idea_shown:
             idea_held = ui_drag(idea, frame, .1, idea_held)
-            if idea.transform.position.y <= table_pos.y:
+            if idea.transform.position.y <= initial_rh_pos.y:
                 idea_shown = False
                 idea.color = INVISIBLE
                 idea.transform.position = Vector3.zero()
