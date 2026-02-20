@@ -17,6 +17,44 @@ RED = (1,0,0,1)
 TRANSPARENT = (1,1,1,.5)
 INVISIBLE = (0,0,0,0)
 
+GONE: Vector3 = Vector3.from_xyz(0, 9999, 0)
+
+def ease_in_out_quad(x: float):
+    return 2 * x * x if x < 0.5 else 1 - ((-2 * x + 2) ** 2) / 2
+
+class LinearAnimElement:
+    def _getpos(self):
+        v: Vector3 = self.end_pos - self.start_pos
+        return self.start_pos + v * ease_in_out_quad(self.frame / self.frames)
+
+    def tick(self):
+        self.frame += 1
+        self.element.transform.position = self._getpos()
+        self.xr.update(self.element)
+        if self.frame > self.frames:
+            self.frame = 0
+
+    def hide(self):
+        self.shown = False
+        self.element.transform.position = GONE
+        self.xr.update(self.element)
+
+    def show(self):
+        self.shown = True
+        self.element.transform.position = self._getpos()
+        self.xr.update(self.element)
+    
+    def __init__(self, xr: SyncXR, element: Element, frames: int, start_pos: Vector3, end_pos: Vector3):
+        self.xr = xr
+        self.element = element
+        self.frame = 0
+        self.frames = frames
+        self.start_pos = start_pos
+        self.end_pos = end_pos
+
+        self.shown = False
+
+
 class TwoFrameElement:
     def __init__(self, xr: SyncXR, flip_time: int, one: Element, two: Element):
         self.xr = xr
@@ -25,11 +63,11 @@ class TwoFrameElement:
         self.flip_time = flip_time
         self.frame = 0
 
-        self.one.color = INVISIBLE
-        self.two.color = INVISIBLE
-
         self.onepos = one.transform.position
         self.twopos = two.transform.position
+
+        self.one.transform.position = GONE
+        self.two.transform.position = GONE
 
         self.xr.update(self.one)
         self.xr.update(self.two)
@@ -45,26 +83,24 @@ class TwoFrameElement:
             if (self.frame // 10) % 2 == 0:
                 # self.one.active = True
                 # self.two.active = False #in theroy, this makes it invisible
-                self.one.color = WHITE
                 self.one.transform.position = self.onepos
-                self.two.color = INVISIBLE
-                self.two.transform.position = Vector3.zero()
+                self.two.transform.position = GONE
                 self.xr.update(self.one)
                 self.xr.update(self.two)
             else:
                 # self.one.active = False
                 # self.two.active = True
-                self.one.color = INVISIBLE
-                self.one.transform.position = Vector3.zero()
-                self.two.color = WHITE
+                self.one.transform.position = GONE
                 self.two.transform.position = self.twopos
                 self.xr.update(self.two)
                 self.xr.update(self.one)
         self.frame += 1
 
     def destroy(self):
-        self.xr.destroy_element(self.one)
-        self.xr.destroy_element(self.two)
+        self.one.transform.position = GONE
+        self.two.transform.position = GONE
+        self.xr.update(self.one)
+        self.xr.update(self.two)
         self.destroyed = True
 
 
@@ -167,7 +203,7 @@ def hide_wheel(elements: list[Element]):
 def main(xr: SyncXR, params: dict):
      
     # Have the user place their hand on the table to record its postion
-    initial_rh_pos: Vector3 = get_table_pos(xr)[1]
+    initial_lh_pos, initial_rh_pos = get_table_pos(xr)
 
     #import GLB assets
     HEART_ASSET =           GLBAsset(raw = Path("assets/heart.glb").read_bytes())
@@ -187,24 +223,35 @@ def main(xr: SyncXR, params: dict):
     ALLEN_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/allen_wrench_guide.png"))
     RATCHET_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/ratchet_wrench_guide.jpg"))
     
-    
-    pinch_guide = TwoFrameElement(xr, 50, Element(
-        key = 'hand_open',
-        transform = Transform(
-            position = initial_rh_pos,
-            rotation = Quaternion.from_euler_angles(90, 0, 0),
-            scale = Vector3.one() * .2
-        ),
-        asset = HAND_OPEN_ASSET,
-    ), Element(
+    pinch_element = Element(
         key = 'hand_pinch',
         transform = Transform(
-            position = initial_rh_pos,
+            position = initial_rh_pos + Vector3.from_xyz(.05,.1,-.05),
             rotation = Quaternion.from_euler_angles(90, 0, 0), # roll IS pitch, hands moved forward 90 degrees toward table
             scale = Vector3.one() * .2
         ),
         asset = HAND_PINCHED_ASSET,
-    ))
+    )
+    
+    wheel_tutorial = Element(
+        key = 'wheel_tutorial',
+        transform = Transform(
+            position = GONE,
+            scale = Vector3.one()
+        ),
+        asset = TextAsset.from_obj("To collapse menu, place your right hand above the wrench and lower it down to the table!")
+    )
+    xr.update(wheel_tutorial)
+
+    pinch_guide = TwoFrameElement(xr, 50, Element(
+        key = 'hand_open',
+        transform = Transform(
+            position = initial_rh_pos + Vector3.from_xyz(.05,.1,-.05),
+            rotation = Quaternion.from_euler_angles(90, 0, 0),
+            scale = Vector3.one() * .2
+        ),
+        asset = HAND_OPEN_ASSET,
+    ), pinch_element)
 
     wheel = [Element(
         key = f'wh_0',
@@ -317,6 +364,17 @@ def main(xr: SyncXR, params: dict):
     idea.transform.scale = Vector3.one() * 0.15
     xr.update(idea)
 
+    drag_tool_tutorial = LinearAnimElement(
+        xr, pinch_element, 40, 
+        wrench_element.transform.position + Vector3.from_xyz(-0.05, .3, 0),
+        panel_screen.transform.position
+    )
+
+    pull_tool_tutorial = LinearAnimElement(
+        xr, pinch_element, 40, 
+        panel_screen.transform.position,
+        (initial_lh_pos + initial_rh_pos) * 0.5
+    )
 
     idea_shown: bool = False
     idea_held: int = 0
@@ -361,10 +419,19 @@ def main(xr: SyncXR, params: dict):
     pinched_last_frame: bool = False
     new_pinch: bool = False
 
+    wheel_drag_tutorialed: bool = False
+    wheel_close_tutorial_is_dismissed: bool = False
+
+    pull_idea_tutorialed: bool = False
+
     xr.update(wrench_element)
+    wheel_tutorial_timer: int = 0
     for frame in stream:
         pinch_guide.inc()
 
+        if pull_tool_tutorial.shown:
+            pull_tool_tutorial.tick()
+            
         if not pinched_last_frame and frame['hands'].right and pinch(frame['hands'].right):
             new_pinch = True
             pinched_last_frame = True
@@ -378,16 +445,20 @@ def main(xr: SyncXR, params: dict):
             idea_shown = True
             idea.transform.position = frame['hands'].right[INDEX_TIP].position
             idea.color = WHITE
+
+            if not pull_idea_tutorialed:
+                pull_idea_tutorialed = True
+                pull_tool_tutorial.hide()
         
         # Handle dragging of "idea."
         if idea_shown:
             idea_held = ui_drag(idea, frame, .1, idea_held)
-            if idea.transform.position.y <= initial_rh_pos.y:
+            if idea.transform.position.y <= initial_rh_pos.y + .04:
                 idea_shown = False
                 idea.color = INVISIBLE
-                idea.transform.position = Vector3.zero()
+                idea.transform.position = GONE
                 
-                timer = 0
+                wheel_tutorial_timer = 0
                 idea_dragged_to_table = True
             xr.update(idea)
 
@@ -398,8 +469,13 @@ def main(xr: SyncXR, params: dict):
         if not wheel_shown and new_pinch and ui_button(wrench_element, frame, 0.1):
             show_wheel(wheel, 
                        wrench_element.transform.position 
-                            + Vector3.from_xyz(0, 0.2, 0))
+                            + Vector3.from_xyz(0, 0.15, 0))
             
+            if not wheel_drag_tutorialed:
+                drag_tool_tutorial.element.transform.rotation \
+                    = Quaternion.from_euler_angles(90, -45, 20)
+                drag_tool_tutorial.show()
+
             for i, e in enumerate(wheel):
                 wheel_coords[i] = e.transform.position
                 xr.update(e)
@@ -408,6 +484,16 @@ def main(xr: SyncXR, params: dict):
             pinch_guide.destroy()
             
         if wheel_shown and frame['hands'].right:
+            # display the wheel tutorial if the user has not interacted with the wheel for a while
+            if not wheel_close_tutorial_is_dismissed and wheel_tutorial_timer > 200:
+                wheel_tutorial.transform.position \
+                    = wrench_element.transform.position \
+                        + Vector3.from_xyz(0, 0.1, 0)
+                xr.update(wheel_tutorial)
+
+            if not wheel_drag_tutorialed:
+                drag_tool_tutorial.tick()
+
             hands: Hands = frame['hands']
             
             i: int = -1
@@ -433,6 +519,10 @@ def main(xr: SyncXR, params: dict):
                         xr.update(screens[i])
 
                         active_screen = screens[i]
+
+                        if not wheel_drag_tutorialed:
+                            wheel_drag_tutorialed = True
+                            drag_tool_tutorial.hide()
                         
                     wheel[i].transform.position = wheel_coords[i]
                 xr.update(e)
@@ -484,10 +574,22 @@ def main(xr: SyncXR, params: dict):
 
                         active_screen = panel_screen
 
+                        if not wheel_drag_tutorialed:
+                            wheel_drag_tutorialed = True
+                            drag_tool_tutorial.hide()
+
+                        wheel_close_tutorial_is_dismissed = True
+                        wheel_tutorial.transform.position = GONE
+                        xr.update(wheel_tutorial)
+
+                        if not pull_idea_tutorialed:
+                            pull_tool_tutorial.show()
+
                     xr.update(close_element)
-                    
-        
-            
+
+        #update timer only once wheel is open
+        if wheel_shown:            
+            wheel_tutorial_timer += 1
 
     stream.close()
 
