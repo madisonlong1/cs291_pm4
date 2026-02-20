@@ -10,11 +10,63 @@ import math
 import numpy as np
 
 from typing import Tuple
+from pathlib import Path
 
 WHITE = (1,1,1,1)
 RED = (1,0,0,1)
 TRANSPARENT = (1,1,1,.5)
 INVISIBLE = (0,0,0,0)
+
+class TwoFrameElement:
+    def __init__(self, xr: SyncXR, flip_time: int, one: Element, two: Element):
+        self.xr = xr
+        self.one = one
+        self.two = two
+        self.flip_time = flip_time
+        self.frame = 0
+
+        self.one.color = INVISIBLE
+        self.two.color = INVISIBLE
+
+        self.onepos = one.transform.position
+        self.twopos = two.transform.position
+
+        self.xr.update(self.one)
+        self.xr.update(self.two)
+        self.one.asset = None
+        self.two.asset = None
+        self.destroyed = False
+
+    def inc(self):
+        if self.destroyed:
+            return
+        
+        if self.frame / self.flip_time == self.frame // self.flip_time:
+            if (self.frame // 10) % 2 == 0:
+                # self.one.active = True
+                # self.two.active = False #in theroy, this makes it invisible
+                self.one.color = WHITE
+                self.one.transform.position = self.onepos
+                self.two.color = INVISIBLE
+                self.two.transform.position = Vector3.zero()
+                self.xr.update(self.one)
+                self.xr.update(self.two)
+            else:
+                # self.one.active = False
+                # self.two.active = True
+                self.one.color = INVISIBLE
+                self.one.transform.position = Vector3.zero()
+                self.two.color = WHITE
+                self.two.transform.position = self.twopos
+                self.xr.update(self.two)
+                self.xr.update(self.one)
+        self.frame += 1
+
+    def destroy(self):
+        self.xr.destroy_element(self.one)
+        self.xr.destroy_element(self.two)
+        self.destroyed = True
+
 
 def distance(a: Vector3, b: Vector3):
     return math.sqrt((a.x - b.x)**2 + (a.y - b.y)**2 + (a.z - b.z)**2)
@@ -24,12 +76,6 @@ def sq_horz_mag(v: Vector3):
 
 def sq_mag(v: Vector3):
     return v.x**2 + v.y**2 + v.z**2
-
-def hand_normal_similarity(hands: Hands) -> float:
-    n_1 = hand_normal(hands.left)
-    n_2 = hand_normal(hands.right)
-
-    return np.dot(n_1.to_numpy(), -n_2.to_numpy())
 
 def hand_up_dist(hand: Tuple[Pose, ...]) -> float:
     n = hand_normal(hand)
@@ -52,34 +98,18 @@ def hand_normal(hand: Tuple[Pose, ...]) -> Vector3:
 
 #get the vertial position of the table 
 def get_table_pos(xr: SyncXR) -> Vector3:
-    MESSAGE = """
-            Face forward and place your palms face down on the table in front of you.
-            Hold still until the message disappears.
-            """
+    COUNT = 50
+    MESSAGE = f"""
+        Face forward and place your palms face down on the table in front of you, and your right hand on the wrench.
+        Hold still until the message counts to {COUNT}.
+        """
 
     tutorial = Element(
         key = "tutorial",
     )
 
-    left_indicator = Element(
-        key = "left_ind",
-        transform = Transform(
-            scale = Vector3.one() * 0.05
-        ),
-        asset = DefaultAssets.SPHERE,
-        color = INVISIBLE
-    )
-
-    right_indicator = Element(
-        key = "right_ind",
-        transform = Transform(
-            scale = Vector3.one() * 0.05
-        ),
-        asset = DefaultAssets.SPHERE,
-        color = INVISIBLE
-    )
-
-    table_pos: Vector3 = Vector3.zero()
+    lh_pos: Vector3 = Vector3.zero()
+    rh_pos: Vector3 = Vector3.zero()
     nframes = 0
     stream = xr.sense(eye=True, hands=True)
     for frame in stream:
@@ -91,27 +121,12 @@ def get_table_pos(xr: SyncXR) -> Vector3:
         
         # tutorial.transform.position = frame['eye'].position + Vector3.from_xyz(0, 0, +0.5)
         tutorial.transform.position = (hands.left[PALM].position + hands.right[PALM].position) * .5
-        tutorial.asset = TextAsset.from_obj(f"{nframes} \n {MESSAGE}")
+        tutorial.transform.position.y += .1
+        tutorial.asset = TextAsset.from_obj(f"Count: {nframes}\n{MESSAGE}")
         xr.update(tutorial)
 
         left_down: bool = open_hand(hands.left) and hand_up_dist(hands.left) < -.8
         right_down: bool = open_hand(hands.right) and hand_up_dist(hands.right) > .8
-
-        if left_down and left_indicator.color == INVISIBLE:
-            left_indicator.color = WHITE
-            xr.update(left_indicator)
-        
-        if not left_down and left_indicator.color == WHITE:
-            left_indicator.color = INVISIBLE
-            xr.update(left_indicator)
-
-        if right_down and right_indicator.color == INVISIBLE:
-            right_indicator.color = WHITE
-            xr.update(right_indicator)
-
-        if not right_down and right_indicator.color == WHITE:
-            right_indicator.color = INVISIBLE
-            xr.update(right_indicator)
 
         if not left_down or not right_down:
             nframes = 0
@@ -122,22 +137,15 @@ def get_table_pos(xr: SyncXR) -> Vector3:
             nframes = 0
             continue
 
-        # if hand_normal_similarity(hands) < .8:
-        #     nframes = 0
-        #     continue
-
-        # print(f"left: {hand_normal(hands.left)}, right: {hand_normal(hands.right)}")
-        # print(f"{hand_normal_dist(hands)}")
-
-        print(f"left: {hand_up_dist(hands.left)}, right: {hand_up_dist(hands.right)}")
         nframes += 1
-        # if nframes > 20:
-        #     table_pos = hands.right[PALM].position
-        #     break
+        if nframes > COUNT:
+            lh_pos = hands.left[PALM].position
+            rh_pos = hands.right[PALM].position
+            break
 
     xr.destroy_element(tutorial)
     stream.close()
-    return table_pos
+    return lh_pos, rh_pos
 
 def show_wheel(elements: list[Element], origin: Vector3):
     RADIUS = 0.1
@@ -159,33 +167,19 @@ def hide_wheel(elements: list[Element]):
 def main(xr: SyncXR, params: dict):
      
     # Have the user place their hand on the table to record its postion
-    initial_rh_pos: Vector3 = get_table_pos(xr)
+    initial_rh_pos: Vector3 = get_table_pos(xr)[1]
 
     #import GLB assets
-    HEART_ASSET = GLBAsset()
-    with open("assets/heart.glb", "rb") as f:
-        HEART_ASSET.raw = f.read()
-    
-    WRENCH_ASSET = GLBAsset()
-    with open("assets/wrench.glb", "rb") as f:
-        WRENCH_ASSET.raw = f.read()
-        
-    ALLEN_WRENCH_ASSET = GLBAsset()
-    with open("assets/allen_wrench_2.glb", "rb") as f:
-        ALLEN_WRENCH_ASSET.raw = f.read()
-        
-    RATCHET_WRENCH_ASSET = GLBAsset()
-    with open("assets/ratchet_wrench.glb", "rb") as f:
-        RATCHET_WRENCH_ASSET.raw = f.read()
-           
-    BIKE_SEAT = GLBAsset()
-    with open("assets/bike_seat.glb", "rb") as f:
-        BIKE_SEAT.raw = f.read()
-        
-    ARROW_ASSET = GLBAsset()
-    with open("assets/arrow.glb", "rb") as f:
-        ARROW_ASSET.raw = f.read()
-    
+    HEART_ASSET =           GLBAsset(raw = Path("assets/heart.glb").read_bytes())
+    WRENCH_ASSET =          GLBAsset(raw = Path("assets/wrench.glb").read_bytes())
+    ALLEN_WRENCH_ASSET =    GLBAsset(raw = Path("assets/allen_wrench_2.glb").read_bytes())
+    RATCHET_WRENCH_ASSET =  GLBAsset(raw = Path("assets/ratchet_wrench.glb").read_bytes())
+    BIKE_SEAT =             GLBAsset(raw = Path("assets/bike_seat.glb").read_bytes())
+    ARROW_ASSET =           GLBAsset(raw = Path("assets/arrow.glb").read_bytes())
+
+    HAND_OPEN_ASSET =       GLBAsset(raw = Path("assets/hand_open.glb").read_bytes())
+    HAND_PINCHED_ASSET =    GLBAsset(raw = Path("assets/hand_pinched.glb").read_bytes())
+
     FRAME_ASSET_1 = ImageAsset.from_obj(obj = Image.open("assets/video_frame1.png"))
     FRAME_ASSET_2 = ImageAsset.from_obj(obj = Image.open("assets/video_frame2.png"))
     
@@ -194,9 +188,23 @@ def main(xr: SyncXR, params: dict):
     RATCHET_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/ratchet_wrench_guide.jpg"))
     
     
-    # CUBE_WHEEL = GLBAsset()
-    # with open("assets/arrow.glb", "rb") as f:
-    #     ARROW_ASSET.raw = f.read()
+    pinch_guide = TwoFrameElement(xr, 50, Element(
+        key = 'hand_open',
+        transform = Transform(
+            position = initial_rh_pos,
+            rotation = Quaternion.from_euler_angles(90, 0, 0),
+            scale = Vector3.one() * .2
+        ),
+        asset = HAND_OPEN_ASSET,
+    ), Element(
+        key = 'hand_pinch',
+        transform = Transform(
+            position = initial_rh_pos,
+            rotation = Quaternion.from_euler_angles(90, 0, 0), # roll IS pitch, hands moved forward 90 degrees toward table
+            scale = Vector3.one() * .2
+        ),
+        asset = HAND_PINCHED_ASSET,
+    ))
 
     wheel = [Element(
         key = f'wh_0',
@@ -228,7 +236,7 @@ def main(xr: SyncXR, params: dict):
         key = f'wrench',
         transform = Transform(
             position = Vector3.from_xyz(initial_rh_pos.x, initial_rh_pos.y + .05, initial_rh_pos.z),
-            scale = Vector3.one() * 0.0005,
+            scale = Vector3.one() * 0.05, #for wrench it was 0.0005
         ),
         color = TRANSPARENT,
         asset = DefaultAssets.SPHERE
@@ -316,29 +324,21 @@ def main(xr: SyncXR, params: dict):
     stream = xr.sense(hands=True)
     
     #define panels for video frames
-    panel_frame_1 = Element(
+    video = TwoFrameElement(xr, 10, Element(
         key = 'frame1',
         transform = Transform(
             position = Vector3.from_xyz(initial_rh_pos.x - 0.15, initial_rh_pos.y+0.15, initial_rh_pos.z + 0.5), 
             scale = Vector3.one() * 0.35,
         ),
         asset = FRAME_ASSET_1,
-        color = INVISIBLE
-    )
-    xr.update(panel_frame_1)
-    panel_frame_1.asset = None
-
-    panel_frame_2 = Element(
+    ), Element(
         key = 'frame2',
         transform = Transform(
             position = Vector3.from_xyz(initial_rh_pos.x - 0.15, initial_rh_pos.y+0.15, initial_rh_pos.z + 0.5), 
             scale = Vector3.one() * 0.35,
         ),
         asset = FRAME_ASSET_2,
-        color = INVISIBLE
-    )
-    xr.update(panel_frame_2)
-    panel_frame_2.asset = None
+    ))
 
     close_element = Element(
         key = 'close',
@@ -363,6 +363,7 @@ def main(xr: SyncXR, params: dict):
 
     xr.update(wrench_element)
     for frame in stream:
+        pinch_guide.inc()
 
         if not pinched_last_frame and frame['hands'].right and pinch(frame['hands'].right):
             new_pinch = True
@@ -388,36 +389,11 @@ def main(xr: SyncXR, params: dict):
                 
                 timer = 0
                 idea_dragged_to_table = True
-
-                wrench_pos = wrench_element.transform.position
-                arrow = Element(
-                    key = 'arrow',
-                    transform = Transform(
-                        position = Vector3.from_xyz(wrench_pos.x + -0.3, wrench_pos.y -0.3, wrench_pos.z + 0.1),
-                        scale = Vector3.one() * 0.05
-                    ),
-                    asset = ARROW_ASSET
-                )
-                xr.update(arrow)
             xr.update(idea)
 
         # Draw "video."
         if idea_dragged_to_table:
-            if timer / 10 == timer // 10:
-                if (timer // 10) % 2 == 0:
-                    panel_frame_1.color = WHITE
-                    panel_frame_2.color = INVISIBLE
-                    xr.update(panel_frame_1)
-                    xr.update(panel_frame_2)
-                else:
-                    panel_frame_1.color = INVISIBLE
-                    panel_frame_2.color = WHITE
-
-                    # frame 2 needs to be drawn before frame 1 is removed, else there is a moment when
-                    # nothing is displayed
-                    xr.update(panel_frame_2)
-                    xr.update(panel_frame_1)
-            timer += 1
+            video.inc()
             
         if not wheel_shown and new_pinch and ui_button(wrench_element, frame, 0.1):
             show_wheel(wheel, 
@@ -429,6 +405,7 @@ def main(xr: SyncXR, params: dict):
                 xr.update(e)
 
             wheel_shown = True
+            pinch_guide.destroy()
             
         if wheel_shown and frame['hands'].right:
             hands: Hands = frame['hands']
@@ -508,18 +485,14 @@ def main(xr: SyncXR, params: dict):
                         active_screen = panel_screen
 
                     xr.update(close_element)
+                    
+        
             
 
     stream.close()
 
-# doesn't seem to work?
-# def element_update(xr: SyncXR, element: Element): #update element asset such that it is only fetched once
-#     # if not element.asset == None:
-#     #     element.asset = None
-#     xr.update(element)
-
 # Return true if an element is pinched by the right hand.
-def ui_button(button: Element, frame: dict, radius: float,) -> bool:
+def ui_button(button: Element, frame: dict, radius: float) -> bool:
     hands: Hands = frame['hands']
     if (not hands.right):
         # button.color = WHITE
