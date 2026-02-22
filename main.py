@@ -239,7 +239,7 @@ def main(xr: SyncXR, params: dict):
             position = GONE,
             scale = Vector3.one()
         ),
-        asset = TextAsset.from_obj("To collapse menu, place your right hand above the wrench and lower it down to the table!")
+        asset = TextAsset.from_obj("To collapse menu, place your right hand flat above the wrench and lower it down to the table!")
     )
     xr.update(wheel_tutorial)
 
