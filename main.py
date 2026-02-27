@@ -223,6 +223,21 @@ def main(xr: SyncXR, params: dict):
     ALLEN_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/allen_wrench_guide.png"))
     RATCHET_WRENCH_GUIDE_ASSET = ImageAsset.from_obj(obj = Image.open("assets/ratchet_wrench_guide.jpg"))
     
+    video_text = Element(
+        key = 'video_text',
+        transform = Transform(
+            position = GONE,
+            scale = Vector3.one()
+        ),
+        asset = TextAsset.from_obj("""To use the allen wrench properly: 
+                                   1) Insert the short end into the screw on the underside of the seat. 
+                                   2) Turn the long end clockwise to tighten.
+                                   3) Remove the wrench rotate it back to the start position.
+                                   4) Reinsert and repeat until the seat is secure.
+                                   """)
+    )
+    xr.update(video_text)
+
     pinch_element = Element(
         key = 'hand_pinch',
         transform = Transform(
@@ -424,6 +439,12 @@ def main(xr: SyncXR, params: dict):
 
     pull_idea_tutorialed: bool = False
 
+    TEXT_HALFWIDTH = .06
+    VIDEO_HALFWIDTH = .14
+
+    text_edgepos: Vector3 = video.onepos + Vector3.from_xyz(VIDEO_HALFWIDTH, 0, 0) # set text to videos pos + half the width of the video
+    text_held: int = 0
+
     xr.update(wrench_element)
     wheel_tutorial_timer: int = 0
     for frame in stream:
@@ -465,6 +486,25 @@ def main(xr: SyncXR, params: dict):
         # Draw "video."
         if idea_dragged_to_table:
             video.inc()
+            initial_dragpos = video.onepos + Vector3.from_xyz(VIDEO_HALFWIDTH,0,0)
+            # xr.update(Element(
+            #     key = 'debug_dragpos',
+            #     transform = Transform(
+            #         position = initial_dragpos,
+            #         scale = Vector3.one() * 0.05),
+            #     asset = DefaultAssets.SPHERE,
+            #     color = TRANSPARENT
+            # ))
+            text_held = ui_held_pos(text_edgepos, frame, .2, text_held)
+            if (text_held > 0):
+                hand_rel_x = frame['hands'].right[INDEX_TIP].position.x - initial_dragpos.x
+                hand_rel_x = min(hand_rel_x, 2 * TEXT_HALFWIDTH)
+                hand_rel_x = max(hand_rel_x, 0)
+                video_text.transform.position = initial_dragpos \
+                    + Vector3.from_xyz(hand_rel_x, -.05, 0.02)
+                text_edgepos = video_text.transform.position \
+                    - Vector3.from_xyz(TEXT_HALFWIDTH, 0, 0)
+                xr.update(video_text)
             
         if not wheel_shown and new_pinch and ui_button(wrench_element, frame, 0.1):
             show_wheel(wheel, 
@@ -632,6 +672,26 @@ def ui_held(ui: Element, frame: dict, radius: float, extra_frames: int):
             return extra_frames - 1
 
     # ui.color = WHITE
+    return 0
+
+def ui_held_pos(pos: Vector3, frame: dict, radius: float, extra_frames: int):
+    FRAMES = 2
+    
+    hands: Hands = frame['hands']
+    if (not hands.right):
+        return max(0, extra_frames - 1)
+
+    handpos = hands.right[INDEX_TIP].position
+    if distance(handpos, pos) < radius:
+        if pinch(hands.right):
+            return FRAMES
+        
+    if extra_frames > 0:
+        if pinch(hands.right):
+            return FRAMES
+        else:
+            return extra_frames - 1
+
     return 0
 
 def ui_drag(ui: Element, frame: dict, radius: float, extra_frames: int):
