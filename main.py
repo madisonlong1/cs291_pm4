@@ -232,7 +232,7 @@ def main(xr: SyncXR, params: dict):
         asset = TextAsset.from_obj("""To use the allen wrench properly: 
                                    1) Insert the short end into the screw on the underside of the seat. 
                                    2) Turn the long end clockwise to tighten.
-                                   3) Remove the wrench rotate it back to the start position.
+                                   3) Remove the wrench and rotate it back to the start position.
                                    4) Reinsert and repeat until the seat is secure.
                                    """)
     )
