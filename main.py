@@ -542,36 +542,37 @@ def main(xr: SyncXR, params: dict):
                     i = idx
                     break
 
-            if i >= 0:
-                wheel_held[i] = ui_drag(e, frame, 0.1, wheel_held[i])
-                if wheel_held[i] == 0:
-                    if distance(wheel[i].transform.position, active_screen.transform.position) < .2:
-                        screens = [wrench_screen, allen_wrench_screen, ratchet_wrench_screen]
-                        active_screen_loc = active_screen.transform.position
-                        # next render the new panel and remove the old
-                        active_screen.color = INVISIBLE
-                        active_screen.transform.position = Vector3.zero()
-                        xr.update(active_screen)
-
-                        screens[i].color = WHITE
-                        screens[i].transform.position = active_screen_loc
-                        screens[i].transform.rotation = active_screen.transform.rotation
-                        xr.update(screens[i])
-
-                        active_screen = screens[i]
-
-                        if not wheel_drag_tutorialed:
-                            wheel_drag_tutorialed = True
-                            drag_tool_tutorial.hide()
-                        
-                    wheel[i].transform.position = wheel_coords[i]
-                xr.update(e)
-            else:
-                for i, e in enumerate(wheel):
+            if idea_held == 0:
+                if i >= 0:
                     wheel_held[i] = ui_drag(e, frame, 0.1, wheel_held[i])
-                    if wheel_held[i] > 0:
-                        xr.update(e)
-                        break
+                    if wheel_held[i] == 0:
+                        if distance(wheel[i].transform.position, active_screen.transform.position) < .2:
+                            screens = [wrench_screen, allen_wrench_screen, ratchet_wrench_screen]
+                            active_screen_loc = active_screen.transform.position
+                            # next render the new panel and remove the old
+                            active_screen.color = INVISIBLE
+                            active_screen.transform.position = Vector3.zero()
+                            xr.update(active_screen)
+
+                            screens[i].color = WHITE
+                            screens[i].transform.position = active_screen_loc
+                            screens[i].transform.rotation = active_screen.transform.rotation
+                            xr.update(screens[i])
+
+                            active_screen = screens[i]
+
+                            if not wheel_drag_tutorialed:
+                                wheel_drag_tutorialed = True
+                                drag_tool_tutorial.hide()
+                            
+                        wheel[i].transform.position = wheel_coords[i]
+                    xr.update(e)
+                else:
+                    for i, e in enumerate(wheel):
+                        wheel_held[i] = ui_drag(e, frame, 0.1, wheel_held[i])
+                        if wheel_held[i] > 0:
+                            xr.update(e)
+                            break
                 
             # Handle wheel close.
             v: Vector3 = hands.right[PALM].position - wrench_element.transform.position
